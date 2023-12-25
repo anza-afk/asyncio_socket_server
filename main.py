@@ -3,6 +3,19 @@ import asyncio
 from db import conn, cursor
 
 
+async def register(reader, writer):
+    writer.write('input your username:'.encode())
+    data = await reader.read(1024)
+    username = data.decode()
+    writer.write('input your password:'.encode())
+    data = await reader.read(1024)
+    password = data.decode()
+    cursor.execute("""INSERT INTO users (username, password)
+                    VALUES (?, ?)""",
+                   (username, password))
+    writer.write('Succsessful registration!'.encode())
+
+
 async def add_client(reader, writer):
     # Получаем данные от клиента
     writer.write('input your data:'.encode())
@@ -12,13 +25,10 @@ async def add_client(reader, writer):
     print(message)
     params = message.replace(' ', '').split(',')
     # Добавляем клиента в базу данных
-    cursor.execute("INSERT INTO clients (ram, cpu) VALUES (?, ?)",
-                   (params[0], params[1]))
-    print(cursor.lastrowid)
-    cursor.execute("INSERT INTO disks (client_id, hdd_capacity) VALUES (?, ?)",
-                   (cursor.lastrowid, params[2]))
+    cursor.execute("""INSERT INTO clients (ram, cpu, hdd_capacity)
+                    VALUES (?, ?, ?)""",
+                   (params[0], params[1], params[2]))
     conn.commit()
-    print('done')
     # Отправляем клиенту подтверждение
     writer.write("Client added to database".encode())
     await writer.drain()
