@@ -19,16 +19,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         try:
             data_bytes = sock.recv(1024)
             data = data_bytes.decode()
-            if data in ("Successful authentication",
-                        'Succsessful registration!'):
-                print("Received:", data)
-                print(f'sending data {test_data}')
-                sock.sendall(test_data.encode())
-                data_bytes = sock.recv(1024)
-                data = data_bytes.decode()
-                print("Received:", data)
-            else:
-                print("Received:", data)
+            print("Received:", data)
         except TimeoutError:
             print("Timeout error")
             continue
