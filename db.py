@@ -6,8 +6,8 @@ cursor = conn.cursor()
 
 # Создаём таблицу users
 cursor.execute('''CREATE TABLE IF NOT EXISTS users
-                  (id INTEGER PRIMARY KEY, username TEXT,
-                  password TEXT)''')
+                  (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,
+                  password TEXT NOT NULL)''')
 
 # Создаем таблицу clients
 cursor.execute('''CREATE TABLE IF NOT EXISTS clients
@@ -17,5 +17,5 @@ cursor.execute('''CREATE TABLE IF NOT EXISTS clients
 
 # Создаем таблицу disks
 cursor.execute('''CREATE TABLE IF NOT EXISTS disks
-                  (id INTEGER PRIMARY KEY, capacity INT, client_id INT,
+                  (id INTEGER PRIMARY KEY, capacity INT, client_id INT UNIQUE,
                   FOREIGN KEY(client_id) REFERENCES client(id))''')
