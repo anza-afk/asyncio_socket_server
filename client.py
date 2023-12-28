@@ -1,15 +1,12 @@
 import socket
-# import psutil
-
 
 HOST, PORT = "", 50007
-# total_memory = list(psutil.cpu_stats())
+
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-
     sock.connect((HOST, PORT))
     sock.settimeout(3)
-    test_data = '256,4,1'  # надо тянуть данные
+    data_bytes = sock.recv(1024)
     while True:
         # total, _, _ = psutil.disk_usage("/")
         # total_gb = total // (2**30)
