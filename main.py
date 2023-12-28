@@ -3,11 +3,11 @@ from asyncio import StreamReader, StreamWriter
 
 import sqlite3
 
-from db import db
+from db import db, ClientDatabase
 
 
 class Server:
-    def __init__(self, host, port, conn, cursor):
+    def __init__(self, host: str, port: int, db: ClientDatabase):
         self.host = host
         self.port = port
         self.db = db
@@ -23,7 +23,8 @@ class Server:
         writer.write('input your username:'.encode())
         data = await reader.read(1024)
         username = data.decode()
-        if self.db.check_username_exists(username):
+        db_user = self.db.get_user_by_username(username=username)
+        if db_user:
             writer.write('Client with this username '
                          'already registered'.encode())
             await writer.drain()
@@ -32,12 +33,12 @@ class Server:
             data = await reader.read(1024)
             password = data.decode()
             try:
-                self.db.execute(f"""INSERT INTO users (username, password)
-                               VALUES ('{username}', '{password}')""")
-                user_id = self.db.lastrowid
+                self.db.create_user(username=username, password=password)
+                user_id = self.db.lastrowid()
                 await self._add_client(
                     writer, ram=2048, cpu=2, hdd_capacity=2048,
                     user_id=user_id)
+
                 # Отправляем клиенту подтверждение
                 writer.write('Succsessful registration!'.encode())
                 await writer.drain()
@@ -53,11 +54,8 @@ class Server:
     ) -> None:
         """Метод записи клиента в базу данных"""
         try:
-            self.db.execute(f"""INSERT INTO clients (ram, cpu, user_id)
-                                VALUES ({ram}, {cpu}, {user_id})""")
-            client_id = self.db.lastrowid
-            self.db.execute(f"""INSERT INTO disks (capacity, client_id)
-                                VALUES ({hdd_capacity}, {client_id})""")
+            self.db.create_client(
+                ram=ram, cpu=cpu, hdd_capacity=hdd_capacity, user_id=user_id)
             self.db.commit()
             print("Client added to database")
             await writer.drain()
@@ -69,7 +67,7 @@ class Server:
             self,
             reader: StreamReader,
             writer: StreamWriter,
-            addr: tuple(str, int)
+            addr: tuple[str, int]
     ) -> None:
         """Метод аутентификации клиента."""
         writer.write('input your username:'.encode())
@@ -81,18 +79,16 @@ class Server:
 
         # Проверяем, есть ли клиент с таким username в базе данных
         try:
-            self.db.execute(f"""SELECT * FROM users
-                                WHERE username = '{username}'""")
-            user = self.db.fetchone()
+            user = self.db.get_user_by_username(username)
             if user:
                 # Если клиент найден, проверяем пароль и добавляем
                 # клиента в список авторизованных
                 if password == user[2]:
                     writer.write("Successful authentication\nAvaible commands:"
                                  "\nget_all_clients, get_authorized_clients, "
-                                 "get_all_connected_clients, get_all_disks, "
+                                 "get_connected_clients, get_all_disks, "
                                  "delete_client, get_statistic, "
-                                 "update_params, quit".encode())
+                                 "update_params, quit, help".encode())
                     self.connected_clients[addr]['authorized'] = True
                     self.connected_clients[addr]['id'] = user[0]
                     await writer.drain()
@@ -112,30 +108,25 @@ class Server:
             self,
             reader: StreamReader,
             writer: StreamWriter,
-            addr: tuple(str, int)
+            addr: tuple[str, int]
     ) -> None:
         """Метод обновления авторизованного клиента в базе данных"""
         # Получаем ID авторизованного клиента
         user_id = self.connected_clients.get(addr)['id']
-        self.db.execute(
-            f"""SELECT id from clients WHERE user_id = {user_id}""")
-        client_id = self.db.fetchone()
+        client_id = self.db.get_client_id_by_user_id(user_id)
         writer.write('What parameters to update?\nformat: param=value, '
                      'param=value\nAccepted params: ram, cpu, '
                      'capacity'.encode())
         data = await reader.read(1024)
         params = data.decode().replace(' ', '').split(',')
-        clients_data = ', '.join(param for param in params
-                                 if 'ram' in param or 'cpu' in param)
+        client_data = ', '.join(param for param in params
+                                if 'ram' in param or 'cpu' in param)
         disk_data = ', '.join(param for param in params if 'capacity' in param)
         try:
-            if clients_data:
-                self.db.execute(f"UPDATE clients SET {clients_data} "
-                                f"WHERE id = '{client_id}'")
+            if client_data:
+                self.db.update_client_data(client_id, client_data)
             if disk_data:
-                self.db.execute(f"UPDATE disks SET {disk_data} "
-                                f"WHERE client_id = '{client_id}'")
-            self.db.commit()
+                self.db.update_disk_data_by_client_id(client_id, disk_data)
             # Отправляем клиенту подтверждение
             writer.write("Client data updated".encode())
             await writer.drain()
@@ -156,17 +147,12 @@ class Server:
                     writer.write('Enter ID of disk to update.'.encode())
                     data = await reader.read(1024)
                     disk_id = data.decode()
-                    self.db.execute(
-                        f"""SELECT * from disks WHERE id = {disk_id}""")
-                    if self.db.fetchone():
+                    if self.db.get_disk_by_id(disk_id):
                         writer.write('Enter new capacity of disk'
                                      f' {disk_id}'.encode())
                         data = await reader.read(1024)
                         capacity = data.decode()
-                        self.db.execute(f"""UPDATE disks
-                                                SET capacity = '{capacity}'
-                                                WHERE id = {disk_id}""")
-                        self.db.commit()
+                        self.db.update_disk_capacity_by_id(disk_id, capacity)
                         writer.write("Disk data updated".encode())
                     else:
                         writer.write(f"Disk with id {disk_id}"
@@ -176,22 +162,17 @@ class Server:
                     writer.write('Enter ID of client to update.'.encode())
                     data = await reader.read(1024)
                     client_id = data.decode()
-                    self.db.execute(
-                        f"""SELECT * from clients WHERE id = {client_id}""")
-                    if self.db.fetchone():
+                    if self.db.get_client_by_id(client_id):
                         writer.write('What parameters to update?\n'
                                      'format: param=value, param=value'
                                      '\nAccepted params: ram, cpu'.encode())
                         data = await reader.read(1024)
                         params = data.decode().replace(
                             ' ', '').split(',')
-                        clients_data = ', '.join(param for param in params
-                                                 if 'ram' in param
-                                                 or 'cpu' in param)
-                        self.db.execute("UPDATE clients "
-                                        f"SET {clients_data} "
-                                        f"WHERE id = '{client_id}'")
-                        self.db.commit()
+                        client_data = ', '.join(param for param in params
+                                                if 'ram' in param
+                                                or 'cpu' in param)
+                        self.db.update_client_data(client_id, client_data)
                         # Отправляем клиенту подтверждение
                         writer.write("Client data updated".encode())
                     else:
@@ -210,7 +191,7 @@ class Server:
             self,
             reader: StreamReader,
             writer: StreamWriter,
-            addr: tuple(str, int)
+            addr: tuple[str, int]
     ) -> None:
         """Метод удаления клиента по ID"""
         writer.write(
@@ -224,19 +205,10 @@ class Server:
         else:
             try:
                 client_id = int(message)
-                self.db.execute(
-                    f"""SELECT user_id from clients WHERE id = {client_id}""")
-                if user := self.db.fetchone():
+                if user := self.db.get_user_id_by_client_id(client_id):
                     current_user_id = self.connected_clients.get(addr)['id']
                     if current_user_id != user[0]:
-                        self.db.execute("DELETE from clients "
-                                        f"WHERE id = '{client_id}'")
-                        self.db.execute("DELETE from disks "
-                                        "WHERE client_id = "
-                                        f"'{client_id}'")
-                        self.db.execute(f"DELETE from users "
-                                        f"WHERE id = '{user[0]}'")
-                        self.db.commit()
+                        self.db.delete_client(client_id, user[0])
                         writer.write(f"Client with id {client_id}"
                                      " deleted".encode())
                         await writer.drain()
@@ -257,13 +229,7 @@ class Server:
 
     async def get_all_clients(self, writer: StreamWriter) -> None:
         """Метод получения всех подключенных клиентов из базы данных"""
-        self.db.execute("""SELECT users.id, users.username,
-                                clients.ram, clients.cpu, disks.id,
-                                disks.capacity
-                                FROM clients
-                                JOIN disks on clients.id = disks.client_id
-                                JOIN users ON clients.user_id = users.id""")
-        db_clients = self.db.fetchall()
+        db_clients = self.db.get_clients()
         clients = [{
                     'user_id': db_client[0],
                     'username': db_client[1],
@@ -293,15 +259,7 @@ class Server:
             clients_ids = ", ".join(f"'{data['id']}'"
                                     for data in suitable_clients.values()
                                     if data.get('id'))
-            self.db.execute(f"""SELECT users.id, users.username,
-                                clients.ram, clients.cpu, disks.id,
-                                disks.capacity
-                                FROM clients
-                                JOIN disks on clients.id = disks.client_id
-                                JOIN users ON clients.user_id = users.id
-                                WHERE users.id
-                                IN ({clients_ids})""")
-            db_clients = self.db.fetchall()
+            db_clients = self.db.get_clients_by_ids(clients_ids)
             clients = []
             for socket, data in suitable_clients.items():
                 if connected_id := data.get('id'):
@@ -336,12 +294,7 @@ class Server:
 
     async def get_all_disks(self, writer: StreamWriter) -> None:
         """Метод получения всех жёстких дисков с параметрами клиентов"""
-        self.db.execute("""SELECT disks.id, disks.capacity,
-                            disks.client_id, clients.ram, clients.cpu,
-                            clients.user_id
-                            FROM disks
-                            JOIN clients ON disks.client_id = clients.id""")
-        db_disks = self.db.fetchall()
+        db_disks = self.db.get_disks()
         disks = [{
                 'disk_id': db_disk[0],
                 'disk_capacity': db_disk[1],
@@ -359,23 +312,31 @@ class Server:
         Метод получения общего количество машин,
         общий объем RAM и CPU, используемый всеми машинами.
         """
-        self.db.execute("""SELECT COUNT(*), SUM(ram), SUM(cpu)
-                            FROM clients""")
-        statistic = self.db.fetchone()
+        db_statistic = self.db.get_statistic()
         statistic = {
-            'client_count': statistic[0],
-            'total_ram': statistic[1],
-            'total_cpu': statistic[2]
+            'client_count': db_statistic[0],
+            'total_ram': db_statistic[1],
+            'total_cpu': db_statistic[2]
         }
         # Отправляем статистику клиенту
         writer.write(str(statistic).encode())
         await writer.drain()
 
-    async def quit(self, writer: StreamWriter, addr: str) -> None:
+    async def quit(self, writer: StreamWriter, addr: tuple[str, int]) -> None:
         """Метод выхода клиента с сервера."""
+        writer.write('Disconnecting...'.encode())
         writer.close()
         self.connected_clients.pop(addr)
         await writer.wait_closed()
+
+    async def get_help(self, writer: StreamWriter) -> None:
+        """Метод выхода клиента с сервера."""
+        writer.write("Avaible commands:"
+                     "\nget_all_clients, get_authorized_clients, "
+                     "get_connected_clients, get_all_disks, "
+                     "delete_client, get_statistic, "
+                     "update_params, quit, help".encode())
+        await writer.drain()
 
     async def handle_connection(
             self, reader: StreamReader, writer: StreamWriter) -> None:
@@ -384,8 +345,6 @@ class Server:
         print("Connected by", addr)
         # Добавляем неавторизованного клиента
         self.connected_clients[addr] = {'authorized': False}
-        writer.write("Hello! For sing in type login\n"
-                     "For sing up type register".encode())
         while True:
             try:
                 data = await reader.read(1024)
@@ -404,7 +363,7 @@ class Server:
                         case "login":
                             await self.login(reader, writer, addr)
                         case "quit":
-                            await quit(writer)
+                            await self.quit(writer, addr)
                         case ("get_all_clients" | "get_authorized_clients" |
                               "get_all_connected_clients" | "get_all_disks" |
                               "delete_client" | "get_statistic" |
@@ -439,14 +398,18 @@ class Server:
                         case "get_statistic":
                             await self.get_statistic(writer)
                         case "quit":
-                            await quit(writer)
+                            await self.quit(writer, addr)
+                        case "help":
+                            await self.get_help(writer)
                         case _:
                             writer.write('Unrecognised command!'.encode())
+                print(self.connected_clients)
             except ConnectionError:
                 print("Client suddenly closed, cannot send")
                 break
         writer.close()
-        self.connected_clients.pop(addr)
+        if self.connected_clients.get(addr):
+            self.connected_clients.pop(addr)
         print("Disconnected by", addr)
 
     async def main(self) -> None:
