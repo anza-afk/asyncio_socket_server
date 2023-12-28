@@ -36,11 +36,11 @@ class ClientDatabase():
     def get_client_id_by_user_id(self, user_id: int) -> int | None:
         self.execute(
             f"""SELECT id from clients WHERE user_id = {user_id}""")
-        return self.db.fetchone()
+        return self.fetchone()
 
     def update_client_data(self, client_id: int, client_data: str) -> None:
         self.execute(f"UPDATE clients SET {client_data} "
-                     f"WHERE id = '{client_id}'")
+                     f"WHERE id = {client_id}")
         self.commit()
 
     def get_disk_by_id(self, disk_id) -> tuple:
@@ -56,7 +56,7 @@ class ClientDatabase():
     def update_disk_data_by_client_id(
             self, client_id: int, disk_data: str) -> None:
         self.execute(f"UPDATE disks SET {disk_data} "
-                     f"WHERE client_id = '{client_id}'")
+                     f"WHERE client_id = {client_id}")
         self.commit()
 
     def get_client_by_id(self, client_id: int) -> tuple:

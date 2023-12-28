@@ -31,7 +31,6 @@ async def run_client() -> None:
             writer.write(data_bytes)
             writer.close()
             break
-    print('123')
 
 
 if __name__ == '__main__':

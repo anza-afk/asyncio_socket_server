@@ -122,7 +122,7 @@ class Server:
         """Метод обновления авторизованного клиента в базе данных"""
         # Получаем ID авторизованного клиента
         user_id = self.connected_clients.get(addr)['id']
-        client_id = self.db.get_client_id_by_user_id(user_id)
+        client_id = self.db.get_client_id_by_user_id(user_id)[0]
         writer.write('What parameters to update?\nformat: param=value, '
                      'param=value\nAccepted params: ram, cpu, '
                      'capacity'.encode())
@@ -412,7 +412,6 @@ class Server:
                             await self.get_help(writer)
                         case _:
                             writer.write('Unrecognised command!'.encode())
-                print(self.connected_clients)
             except ConnectionError:
                 print("Client suddenly closed, cannot send")
                 break
