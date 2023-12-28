@@ -1,13 +1,14 @@
 import sqlite3
 
+DB_LOCATION = 'clients.db'
+
 
 class ClientDatabase():
     """sqlite3 database class that holds testers jobs"""
-    DB_LOCATION = 'clients.db'
 
-    def __init__(self) -> None:
+    def __init__(self, db_location) -> None:
         """Initialize db class variables"""
-        self.connection = sqlite3.connect(ClientDatabase.DB_LOCATION)
+        self.connection = sqlite3.connect(db_location)
         self.cur = self.connection.cursor()
 
     def close(self) -> None:
@@ -137,5 +138,5 @@ class ClientDatabase():
         self.connection.commit()
 
 
-db = ClientDatabase()
+db = ClientDatabase(DB_LOCATION)
 db.create_tables()

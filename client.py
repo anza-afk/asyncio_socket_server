@@ -1,6 +1,13 @@
 import asyncio
 
-HOST, PORT = "localhost", 50007
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+HOST = os.environ["CLIENT_HOST"]
+PORT = os.environ["SERVER_PORT"]
 
 
 async def run_client() -> None:
@@ -24,8 +31,6 @@ async def run_client() -> None:
             writer.write(data_bytes)
             writer.close()
             break
-            # await writer.wait_closed()
-            # exit(2)
     print('123')
 
 

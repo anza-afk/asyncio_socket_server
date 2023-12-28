@@ -1,9 +1,18 @@
 import asyncio
 from asyncio import StreamReader, StreamWriter
 
+import os
+
+from dotenv import load_dotenv
+
 import sqlite3
 
 from db import db, ClientDatabase
+
+load_dotenv()
+
+HOST = os.environ["SERVER_HOST"]
+PORT = os.environ["SERVER_PORT"]
 
 
 class Server:
@@ -417,9 +426,6 @@ class Server:
             self.handle_connection, self.host, self.port)
         async with server:
             await server.serve_forever()
-
-
-HOST, PORT = "", 50007
 
 
 if __name__ == "__main__":
